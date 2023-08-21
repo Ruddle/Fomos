@@ -1,0 +1,21 @@
+{
+  // "rust-analyzer.check.allTargets": false,
+  // "rust-analyzer.check.extraArgs": [
+  //     "--target",
+  //     "x86_64"
+  // ],
+  "rust-analyzer.linkedProjects": [
+    "./bootloader/Cargo.toml",
+    "./app_background/Cargo.toml",
+    "./app_console/Cargo.toml",
+    "./app_cursor/Cargo.toml",
+    "./app_test/Cargo.toml"
+  ],
+  "git.ignoreLimitWarning": true
+}
+
+// "app_back",
+// "bootloader",
+// "func",
+// "app_cursor",
+// "vconsol",

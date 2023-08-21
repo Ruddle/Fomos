@@ -1,0 +1,43 @@
+[package]
+name = "func"
+version = "0.1.0"
+edition = "2021"
+[[bin]]
+name="func"
+test = false
+bench = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+imagine = { version= "0.4.0"}
+x86_64 = { version = "0.14.8" }
+arrform = "0.1.1"
+vek = { version = "0.15.10", default-features = false, features = ["libm"] }
+libm = "0.2.6"
+# [dependencies.zune-jpeg]
+# version ="0.3.14"
+# default-features = false
+# features = ["x86"]
+
+
+[features]
+default = []
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+strip = true 
+codegen-units = 1
+
+[workspace]
+
+#RUSTFLAGS="-C relocation-model=pie -C link-arg=-nostartfiles -C link-arg=-pie"
+
+# RUSTFLAGS="-C relocation-model=pie -C link-arg=-nostartfiles -C link-arg=-pie" cargo build --release --target x86_64-unknown-linux-gnu
+
+
+# CURRENT WORKING with custom target in .cargo
+# RUSTFLAGS="-C relocation-model=pie -C link-arg=-pie" cargo build --release 

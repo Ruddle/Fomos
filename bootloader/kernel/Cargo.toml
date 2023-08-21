@@ -1,0 +1,52 @@
+
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+[[bin]]
+name="kernel"
+test = false
+bench = false
+
+[dependencies]
+bootloader_api = "0.11.3"
+bootloader-boot-config = "0.11.3"
+conquer-once = { version = "0.3.2", default-features = false }
+spinning_top = "0.2.4"
+usize_conversions = "0.2.0"
+x86_64 = { version = "0.14.8" }
+xmas-elf = "0.8.0"
+raw-cpuid = "10.2.0"
+rand = { version = "0.8.4", default-features = false }
+rand_hc = "0.3.1"
+uart_16550 = "0.2.18"
+log = "0.4.17"
+acpi = "4.1.1"
+linked_list_allocator = "0.9.0"
+iced-x86 = {version = "1.18.0", default-features = false, features= ["decoder", "no_std","nasm"]}
+arrayvec = {version="0.7.2", default-features = false}
+bitfield = "0.14.0"
+crossbeam =   {version="0.8", default-features=false, features=["alloc"]}
+hashbrown =   {version="0.13.2"} 
+edid-rs =   {version="0.1.0", default-features=false, features=["no_std"]}
+spin = "0.5.2"
+# virtio-drivers = "0.3.0"
+[dependencies.noto-sans-mono-bitmap]
+version = "0.2.0"
+default-features = false
+features = [
+    "regular",
+    "size_16",
+    "unicode-basic-latin",
+    # required for the fallback char '�'
+    "unicode-specials",
+]
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
+[dependencies.futures]
+version = "0.3.4"
+default-features = false
+features = ["alloc","async-await"]
