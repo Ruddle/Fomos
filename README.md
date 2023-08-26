@@ -25,7 +25,7 @@ OS development is extremely hard, Rust makes it more bearable.
 - No context switch once booted
 - _Nearly support Virgl_
 
-There is 4 examples of apps in this repo named `app_*`.
+There is 5 examples of apps in this repo named `app_*`, some in Rust, one in C.
 The kernel is in `bootloader`.
 
 # What is unique
@@ -67,7 +67,7 @@ Here is the Context for the last version of this OS
 pub struct Context<'a, T> {
     pub version: u8,
     pub start_time: u64,
-    pub log: extern "C" fn(s: &str),
+    pub log: extern "C" fn(s: *const u8, l: u32),
     pub pid: u64,
     pub fb: FB<'a>,
     pub calloc: extern "C" fn(usize, usize) -> *mut u8,
@@ -86,13 +86,13 @@ Old Context used by `app_test`:
 pub struct Context<'a> {
     pub version: u8,
     start_time: u64,
-    log: extern "C" fn(s: &str),
+    log: extern "C" fn(s: *const u8, l: u32),
     pid: u64,
     fb: FB<'a>,
 }
 ```
 
-Meaning Fomos already handles gracefully Apps designed for a much older version of itself. As long as the OS stays compatible with the old stuff in the context, it can add new functionalities for other App by just appending to it the new functions (here calloc, cdalloc, store, and input).
+Meaning Fomos already handles gracefully Apps designed for a much older version of itself. As long as the OS stays compatible with the old stuff in the context, it can add new functionalities for other App by just appending to the context the new functions (here calloc, cdalloc, store, and input).
 
 `app_test` precedes the dynamic allocation age !
 
@@ -148,7 +148,7 @@ On a linux, run
 ./build.sh
 ```
 
-_You might need rust nightly_
+_You might need rust nightly, gcc, qemu with virgl flag_
 
 # Credit
 
