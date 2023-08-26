@@ -11,7 +11,7 @@ const TEXT: &str = "Writting from pid: ";
 pub struct Context<'a> {
     pub version: u8,
     start_time: u64,
-    log: extern "C" fn(s: &str),
+    log: extern "C" fn(s: *const u8, l: u32),
     pid: u64,
     fb: FB<'a>,
 }
@@ -42,7 +42,7 @@ pub extern "C" fn _start(ctx: &mut Context) -> i32 {
     m[m.len() - 1] = '0' as u8 + ctx.pid as u8;
 
     let s = unsafe { core::str::from_utf8_unchecked(&txt) };
-    (ctx.log)(s);
+    (ctx.log)(s.as_ptr(), s.len() as u32);
 
     //make thinks blue
     // for px in ctx.fb.pixels.iter_mut() {

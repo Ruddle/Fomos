@@ -71,8 +71,12 @@ use crate::{
     virtio::{DeviceType, Virtio},
 };
 
-extern "C" fn log_fn(s: &str) {
-    log::info!("{}", s)
+extern "C" fn log_fn(s: *const u8, l: u32) {
+    unsafe {
+        let slice = core::slice::from_raw_parts(s, l as usize);
+        let str_slice = core::str::from_utf8_unchecked(slice);
+        log::info!("{}", str_slice)
+    }
 }
 
 extern "C" fn calloc(size: usize, align: usize) -> *mut u8 {
@@ -402,6 +406,8 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                 &include_bytes!("../../../app_background/target/x86_64/release/func")[..],
                 &include_bytes!("../../../app_console/target/x86_64/release/func")[..],
                 &include_bytes!("../../../app_cursor/target/x86_64/release/func")[..],
+                // &include_bytes!("../../../app_test/target/x86_64/release/func")[..],
+                // &include_bytes!("../../../app_c/target/main")[..],
             ];
             for app_bytes in apps_raw.iter() {
                 apps.push(App::new(app_bytes, false));

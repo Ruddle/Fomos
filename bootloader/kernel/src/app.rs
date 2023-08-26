@@ -12,7 +12,7 @@ use crate::{allocator::ALLOCATOR, framebuffer::FBShare, globals, interrupts::glo
 pub struct Context<'a> {
     pub version: u8,
     pub start_time: u64,
-    pub log: extern "C" fn(s: &str),
+    pub log: extern "C" fn(*const u8, u32),
     pub pid: u64,
     pub fb: FBShare<'a>,
     pub calloc: extern "C" fn(usize, usize) -> *mut u8,
@@ -23,7 +23,7 @@ pub struct Context<'a> {
 static mut none: Option<Box<()>> = None;
 impl<'a> Context<'a> {
     pub fn new(
-        log: extern "C" fn(s: &str),
+        log: extern "C" fn(*const u8, u32),
         fb: FBShare<'a>,
         calloc: extern "C" fn(usize, usize) -> *mut u8,
         cdalloc: extern "C" fn(*mut u8, usize, usize),

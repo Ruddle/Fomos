@@ -1,21 +1,24 @@
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    // x86_64::instructions::interrupts::int3();
+    //  x86_64::instructions::interrupts::int3();
     unsafe {
-        (LOGGER.f)("panic");
+        (LOGGER.f)("panic".as_ptr(), 5);
     };
-    unsafe { (LOGGER.f)(&format!("{:?}", info)) };
+    unsafe {
+        let s = &format!("{:?}", info);
+        (LOGGER.f)(s.as_ptr(), s.len() as u32)
+    };
     loop {}
 }
 
 pub static mut LOGGER: Logger = Logger::init();
 
 pub fn log(s: &str) {
-    unsafe { (LOGGER.f)(s) }
+    unsafe { (LOGGER.f)(s.as_ptr(), s.len() as u32) }
 }
 
-type LogFn = extern "C" fn(&str);
-extern "C" fn nop(s: &str) {}
+type LogFn = extern "C" fn(*const u8, u32);
+extern "C" fn nop(s: *const u8, l: u32) {}
 pub struct Logger {
     pub f: LogFn,
 }
@@ -31,7 +34,7 @@ impl Logger {
 pub struct Context<'a, T> {
     pub version: u8,
     pub start_time: u64,
-    pub log: extern "C" fn(s: &str),
+    pub log: extern "C" fn(s: *const u8, l: u32),
     pub pid: u64,
     pub fb: FB<'a>,
     pub calloc: extern "C" fn(usize, usize) -> *mut u8,
