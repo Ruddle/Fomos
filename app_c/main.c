@@ -9,8 +9,8 @@ typedef struct
 
 int _start(Context *ctx)
 {
-    char hwText[] = "[pid:_] Hello from C!";
-    hwText[5] = '0' + ctx->pid;
-    ctx->log(hwText, sizeof(hwText) - 1);
+    char text[] = "[pid:_] Hello from C!";
+    text[5] = '0' + ctx->pid;
+    ctx->log(text, sizeof(text) - 1);
     return 0;
 }
