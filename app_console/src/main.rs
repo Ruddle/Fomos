@@ -24,7 +24,6 @@ pub struct Store {
     b1: Vec<RGBA>,
     b2: Vec<RGBA>,
     step: usize,
-    fb: Vec<RGBA>,
     taffy: Taffy,
 }
 
@@ -167,25 +166,11 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
     unsafe { ALLOCATOR.swap(ctx) };
     unsafe { LOGGER.swap(ctx.log) };
 
-    // (ctx.log)("back start");
-    // x86_64::instructions::interrupts::int3();
     let hi = ctx.fb.h as isize / DIV;
     let wi = ctx.fb.w as isize / DIV;
 
     let store = ctx.store.get_or_insert_with(|| {
         Box::new({
-            let fb = ctx
-                .fb
-                .pixels
-                .iter()
-                .map(|e| RGBA {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                })
-                .collect();
-
             Store {
                 x: 100 + ctx.pid as usize * 100,
                 y: 100 + ctx.pid as usize * 100,
@@ -194,7 +179,7 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 resizing: [false; 4],
                 b1: Vec::with_capacity((wi * hi) as usize),
                 b2: Vec::with_capacity((wi * hi) as usize),
-                fb,
+
                 step: 0,
                 moving: None,
                 taffy: Taffy::new(),
@@ -470,6 +455,36 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 // *p = getf(x as f32 / div as f32, y as f32 / div as f32, dst, wi, hi);
                 *p = dst[x / div + (y / div) * (ctx.fb.w / div)];
             }
+        }
+    }
+
+    //Write window title
+    {
+        use noto_sans_mono_bitmap::{get_raster, get_raster_width, FontWeight, RasterHeight};
+        let s = alloc::format!("app_console [{}]", ctx.pid);
+        let mut cursor_x = 0;
+        let padding = 2;
+        let weight = FontWeight::Regular;
+        for c in s.chars() {
+            let width = get_raster_width(weight, RasterHeight::Size16);
+
+            let char_raster =
+                get_raster(c, weight, RasterHeight::Size16).expect("unsupported char");
+
+            for (row_i, row) in char_raster.raster().iter().enumerate() {
+                for (col_i, pixel) in row.iter().enumerate() {
+                    let x = store.x + col_i + padding + cursor_x;
+                    let y = store.y + row_i + padding + 0;
+                    if x <= 0 || x >= ctx.fb.w || y <= 0 || y >= ctx.fb.h || x >= store.x2 {
+                        continue;
+                    }
+                    let p = &mut ctx.fb.pixels[x + y * ctx.fb.w];
+                    p.r = *pixel.max(&p.r);
+                    p.g = *pixel.max(&p.g);
+                    p.b = *pixel.max(&p.b);
+                }
+            }
+            cursor_x += width;
         }
     }
 

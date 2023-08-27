@@ -18,6 +18,18 @@ taffy = { git = "https://github.com/Ruddle/taffy", default-features = false, fea
 # default-features = false
 # features = ["x86"]
 
+[dependencies.noto-sans-mono-bitmap]
+version = "0.2.0"
+default-features = false
+features = [
+    "regular",
+    "size_16",
+    "unicode-basic-latin",
+    # required for the fallback char '�'
+    "unicode-specials",
+]
+
+
 
 [features]
 default = []
