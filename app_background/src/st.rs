@@ -43,10 +43,21 @@ pub struct Context<'a, T> {
     pub input: &'a Input,
 }
 
+const HISTORY_SIZE: usize = 64;
+
+#[repr(C)]
+#[derive(Clone, Debug, Copy)]
+pub struct InputEvent {
+    pub trigger: bool,
+    pub key: usize,
+}
+#[repr(C)]
 pub struct Input {
     pub mx: usize,
     pub my: usize,
     pub keys: [u8; 1024],
+    pub history_last_index: usize,
+    pub history_ring: [InputEvent; HISTORY_SIZE],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

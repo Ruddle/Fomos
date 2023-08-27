@@ -25,6 +25,9 @@ pub struct Store {
     b2: Vec<RGBA>,
     step: usize,
     taffy: Taffy,
+    input_history_last_index: usize,
+
+    text_buffer: alloc::string::String,
 }
 
 fn put(pixel: &mut RGBA, v: Vec3<f32>) {
@@ -183,9 +186,26 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 step: 0,
                 moving: None,
                 taffy: Taffy::new(),
+                input_history_last_index: 0,
+                text_buffer: alloc::string::String::new(),
             }
         })
     });
+
+    for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
+        let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
+
+        if (trigger) {
+            log(&alloc::format!("{:?}", key));
+
+            if let Some(c) = key.char() {
+                store.text_buffer = alloc::format!("{}{}", store.text_buffer, c)
+            } else {
+                // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
+            }
+        }
+    }
+    store.input_history_last_index = ctx.input.history_last_index;
 
     store.step += 1;
     let blured1 = &mut store.b1;
@@ -475,7 +495,13 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 for (col_i, pixel) in row.iter().enumerate() {
                     let x = store.x + col_i + padding + cursor_x;
                     let y = store.y + row_i + padding + 0;
-                    if x <= 0 || x >= ctx.fb.w || y <= 0 || y >= ctx.fb.h || x >= store.x2 {
+                    if x <= 0
+                        || x >= ctx.fb.w
+                        || y <= 0
+                        || y >= ctx.fb.h
+                        || x >= store.x2
+                        || y >= store.y2
+                    {
                         continue;
                     }
                     let p = &mut ctx.fb.pixels[x + y * ctx.fb.w];
@@ -487,6 +513,46 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
             cursor_x += width;
         }
     }
+    //Write text buffer
+    {
+        use noto_sans_mono_bitmap::{get_raster, get_raster_width, FontWeight, RasterHeight};
 
+        let mut cursor_x = 0;
+        let mut cursor_y = 20;
+        let padding = 2;
+        let weight = FontWeight::Regular;
+        for c in store.text_buffer.chars() {
+            if (c == '\n') {
+                cursor_y += 16;
+                cursor_x = 0;
+                continue;
+            }
+            let width = get_raster_width(weight, RasterHeight::Size16);
+
+            let char_raster =
+                get_raster(c, weight, RasterHeight::Size16).expect("unsupported char");
+
+            for (row_i, row) in char_raster.raster().iter().enumerate() {
+                for (col_i, pixel) in row.iter().enumerate() {
+                    let x = store.x + col_i + padding + cursor_x;
+                    let y = store.y + row_i + padding + cursor_y;
+                    if x <= 0
+                        || x >= ctx.fb.w
+                        || y <= 0
+                        || y >= ctx.fb.h
+                        || x >= store.x2
+                        || y >= store.y2
+                    {
+                        continue;
+                    }
+                    let p = &mut ctx.fb.pixels[x + y * ctx.fb.w];
+                    p.r = *pixel.max(&p.r);
+                    p.g = *pixel.max(&p.g);
+                    p.b = *pixel.max(&p.b);
+                }
+            }
+            cursor_x += width;
+        }
+    }
     return 0;
 }

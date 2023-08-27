@@ -3,6 +3,7 @@ use crossbeam::atomic::AtomicCell;
 pub static INPUT: GLOBAL<Input> = GLOBAL::new(Input::new());
 pub struct GLOBAL<T>(AtomicCell<T>);
 
+const HISTORY_SIZE: usize = 64;
 impl<T: Copy> GLOBAL<T> {
     pub const fn new(t: T) -> Self {
         Self(AtomicCell::new(t))
@@ -20,11 +21,20 @@ impl<T: Copy> GLOBAL<T> {
         self.0.load()
     }
 }
+#[repr(C)]
+#[derive(Clone, Debug, Copy)]
+pub struct InputEvent {
+    pub trigger: bool,
+    pub key: usize,
+}
+#[repr(C)]
 #[derive(Clone, Debug, Copy)]
 pub struct Input {
     pub mouse_x: usize,
     pub mouse_y: usize,
     pub keys: [KeyState; 1024],
+    pub history_last_index: usize,
+    pub history_ring: [InputEvent; HISTORY_SIZE],
 }
 
 impl Input {
@@ -33,6 +43,11 @@ impl Input {
             mouse_x: 0,
             mouse_y: 0,
             keys: [KeyState::Off; 1024],
+            history_last_index: 0,
+            history_ring: [InputEvent {
+                trigger: false,
+                key: 0,
+            }; HISTORY_SIZE],
         }
     }
     pub fn step(&mut self) {
@@ -58,6 +73,14 @@ pub enum KeyState {
 impl Default for KeyState {
     fn default() -> Self {
         KeyState::Off
+    }
+}
+
+impl Input {
+    pub fn handle_incoming_state(&mut self, key: usize, b: bool) {
+        self.history_last_index += 1;
+        self.history_ring[self.history_last_index % HISTORY_SIZE] = InputEvent { trigger: b, key };
+        self.keys[key].handle_incoming_state(b);
     }
 }
 

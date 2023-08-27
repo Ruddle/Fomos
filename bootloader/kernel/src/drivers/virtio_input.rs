@@ -21,7 +21,7 @@ pub async fn drive(mut virtio: Virtio) {
                 let evt = (desc.addr as *const VirtioInputEvent).read_volatile();
                 crate::globals::INPUT.update(|input| match evt.type_ {
                     0 => { /*no op */ }
-                    1 => input.keys[evt.code as usize].handle_incoming_state(evt.value != 0),
+                    1 => input.handle_incoming_state(evt.code as usize, evt.value != 0),
                     2 => {
                         let d: i32 = core::intrinsics::transmute(evt.value);
                         match evt.code {
