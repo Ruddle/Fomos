@@ -4,7 +4,7 @@ Experimental OS, built with Rust
 
 https://github.com/Ruddle/Fomos/assets/14235713/ec25bfd5-76b7-4808-85c8-9d7465d02544
 
-**Fun fact**: there are 4 apps running in the video. A background app, a cursor app, and 2 blurry window apps.
+**Fun fact**: there are 3 apps running in the video. A background app, a cursor app, and a console app.
 
 # Why
 
@@ -36,7 +36,7 @@ The signature of an app in Fomos:
 pub extern "C" fn _start(ctx: &mut Context) -> i32
 ```
 
-App do not need a standard library, any OS functionality is given to the app through the _Context_.
+Apps do not need a standard library, any OS functionality is given to the app through the _Context_.
 
 the _Context_ is mostly a pointer to a bag of
 

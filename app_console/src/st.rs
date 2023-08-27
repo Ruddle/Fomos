@@ -46,7 +46,7 @@ pub struct Context<'a, T> {
 pub const HISTORY_SIZE: usize = 64;
 
 #[repr(usize)]
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum Key {
     Reserved = 0,
     Esc = 1,

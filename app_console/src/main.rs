@@ -14,6 +14,20 @@ use vek::num_traits::Float;
 
 use taffy::prelude::*;
 
+pub struct ConsoleHistory {
+    atoms: alloc::vec::Vec<Atom>,
+}
+impl ConsoleHistory {
+    pub fn new() -> ConsoleHistory {
+        ConsoleHistory { atoms: Vec::new() }
+    }
+}
+
+pub struct Atom {
+    is_user: bool,
+    text: alloc::string::String,
+}
+
 pub struct Store {
     x: usize,
     y: usize,
@@ -26,8 +40,8 @@ pub struct Store {
     step: usize,
     taffy: Taffy,
     input_history_last_index: usize,
-
-    text_buffer: alloc::string::String,
+    console_history: ConsoleHistory,
+    active: bool,
 }
 
 fn put(pixel: &mut RGBA, v: Vec3<f32>) {
@@ -124,7 +138,7 @@ fn blur(
             for (k, &coef) in boxes.iter().enumerate() {
                 let dk = k as isize - KH;
                 let v = get(x + fx * dk, y + fy * dk, src, wi, hi);
-                avg += v * coef;
+                avg += v * coef * 0.99;
             }
             put(&mut dst[(x + y * wi) as usize], avg);
         }
@@ -152,10 +166,16 @@ const ORANGE: RGBA = RGBA {
     b: 0,
     a: 0,
 };
-const GREY2: RGBA = RGBA {
+const GREY3: RGBA = RGBA {
     r: 150,
     g: 150,
     b: 150,
+    a: 0,
+};
+const GREY2: RGBA = RGBA {
+    r: 80,
+    g: 80,
+    b: 80,
     a: 0,
 };
 const GREY: RGBA = RGBA {
@@ -186,22 +206,98 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 step: 0,
                 moving: None,
                 taffy: Taffy::new(),
-                input_history_last_index: 0,
-                text_buffer: alloc::string::String::new(),
+                input_history_last_index: ctx.input.history_last_index,
+                console_history: ConsoleHistory::new(),
+                active: false,
             }
         })
     });
 
-    for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
-        let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
+    if store.step == 0 {
+        store.console_history.atoms.push(Atom {
+            is_user: false,
+            text: alloc::format!("Welcome to Fomos !"),
+        });
+        store.console_history.atoms.push(Atom {
+            is_user: true,
+            text: alloc::format!(">"),
+        });
+    }
 
-        if (trigger) {
-            log(&alloc::format!("{:?}", key));
+    if store.active {
+        'new_inputs: for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
+            let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
 
-            if let Some(c) = key.char() {
-                store.text_buffer = alloc::format!("{}{}", store.text_buffer, c)
-            } else {
-                // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
+            if (trigger) {
+                let last = store.console_history.atoms.last_mut();
+                match last {
+                    Some(Atom { is_user, text }) if *is_user => {
+                        log(&alloc::format!("{:?}", key));
+
+                        match key {
+                            Key::KeyEnter => {
+                                match text.as_ref() {
+                                    ">pid" => {
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("pid: {}", ctx.pid),
+                                        });
+                                    }
+                                    ">time" => {
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("time: {} ms", ctx.start_time),
+                                        });
+                                    }
+                                    ">reset" => {
+                                        drop(store);
+                                        let old = ctx.store.take().unwrap();
+                                        drop(old);
+                                        return 0;
+                                    }
+                                    ">help" => {
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!(
+                                                "commands:
+- pid     Display the app pid
+- time    Display the kernel time
+- reset   Clear the app memory
+- help    You are here
+"
+                                            ),
+                                        });
+                                    }
+                                    _ => {
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("unknown command"),
+                                        });
+                                    }
+                                }
+
+                                store.console_history.atoms.push(Atom {
+                                    is_user: true,
+                                    text: alloc::format!(">"),
+                                });
+                                break 'new_inputs;
+                            }
+                            Key::KeyBackspace => {
+                                if text.len() > 1 {
+                                    text.pop();
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        if let Some(c) = key.char() {
+                            *text = alloc::format!("{}{}", text, c)
+                        } else {
+                            // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -294,6 +390,9 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 && store.y2 >= ctx.input.my
             {
                 store.moving = Some((ctx.input.mx, ctx.input.my));
+                store.active = true;
+            } else {
+                store.active = false;
             }
         }
     }
@@ -440,7 +539,7 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 let (cx, cy, cx2, cy2) = get_rect(header_node);
 
                 if pt_in_rect(x, y, cx, cy, cx2, cy2) {
-                    *p = GREY;
+                    *p = if store.active { GREY2 } else { GREY };
                     drawn = true;
                 }
             }
@@ -448,13 +547,13 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
             for i in 0..taffy.child_count(body_node).unwrap() {
                 let (cx, cy, cx2, cy2) = get_rect(taffy.child_at_index(body_node, i).unwrap());
                 if pt_in_rect(x, y, cx, cy, cx2, cy2) {
-                    *p = if i % 2 == 0 { GREY2 } else { ORANGE };
+                    *p = if i % 2 == 0 { GREY3 } else { ORANGE };
                     drawn = true;
                 }
             }
 
             if (x == store.x) || (x == store.x2) || (y == store.y) || (y == store.y2) {
-                *p = GREY;
+                *p = if store.active { GREY2 } else { GREY };
                 if store.moving.is_some() {
                     *p = ORANGE;
                 }
@@ -521,37 +620,46 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
         let mut cursor_y = 20;
         let padding = 2;
         let weight = FontWeight::Regular;
-        for c in store.text_buffer.chars() {
-            if (c == '\n') {
-                cursor_y += 16;
-                cursor_x = 0;
-                continue;
-            }
-            let width = get_raster_width(weight, RasterHeight::Size16);
 
-            let char_raster =
-                get_raster(c, weight, RasterHeight::Size16).expect("unsupported char");
-
-            for (row_i, row) in char_raster.raster().iter().enumerate() {
-                for (col_i, pixel) in row.iter().enumerate() {
-                    let x = store.x + col_i + padding + cursor_x;
-                    let y = store.y + row_i + padding + cursor_y;
-                    if x <= 0
-                        || x >= ctx.fb.w
-                        || y <= 0
-                        || y >= ctx.fb.h
-                        || x >= store.x2
-                        || y >= store.y2
-                    {
-                        continue;
-                    }
-                    let p = &mut ctx.fb.pixels[x + y * ctx.fb.w];
-                    p.r = *pixel.max(&p.r);
-                    p.g = *pixel.max(&p.g);
-                    p.b = *pixel.max(&p.b);
+        for Atom { is_user, text } in store.console_history.atoms.iter() {
+            for c in text.chars() {
+                if (c == '\n') {
+                    cursor_y += 16;
+                    cursor_x = 0;
+                    continue;
                 }
+                let width = get_raster_width(weight, RasterHeight::Size16);
+
+                let char_raster =
+                    get_raster(c, weight, RasterHeight::Size16).expect("unsupported char");
+
+                for (row_i, row) in char_raster.raster().iter().enumerate() {
+                    for (col_i, pixel) in row.iter().enumerate() {
+                        let x = store.x + col_i + padding + cursor_x;
+                        let y = store.y + row_i + padding + cursor_y;
+                        if x <= 0
+                            || x >= ctx.fb.w
+                            || y <= 0
+                            || y >= ctx.fb.h
+                            || x >= store.x2
+                            || y >= store.y2
+                        {
+                            continue;
+                        }
+                        let p = &mut ctx.fb.pixels[x + y * ctx.fb.w];
+
+                        p.r = *pixel.max(&p.r);
+                        p.g = *pixel.max(&p.g);
+                        if *is_user {
+                            p.b = *pixel.max(&p.b);
+                        };
+                    }
+                }
+                cursor_x += width;
             }
-            cursor_x += width;
+
+            cursor_y += 16;
+            cursor_x = 0;
         }
     }
     return 0;
