@@ -2,7 +2,7 @@
 
 Experimental OS, built with Rust
 
-https://github.com/Ruddle/Fomos/assets/14235713/ec25bfd5-76b7-4808-85c8-9d7465d02544
+https://github.com/Ruddle/Fomos/assets/14235713/9521f907-bd4b-4fcf-b651-172a87da0f65
 
 **Fun fact**: there are 3 apps running in the video. A background app, a cursor app, and a console app.
 
