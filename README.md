@@ -2,7 +2,7 @@
 
 Experimental OS, built with Rust
 
-https://github.com/Ruddle/Fomos/assets/14235713/9521f907-bd4b-4fcf-b651-172a87da0f65
+https://github.com/Ruddle/Fomos/assets/14235713/3ee75d5e-5ebe-4cc1-b267-8b73337ee157
 
 **Fun fact**: there are 3 apps running in the video. A background app, a cursor app, and a console app.
 
@@ -38,7 +38,7 @@ pub extern "C" fn _start(ctx: &mut Context) -> i32
 
 Apps do not need a standard library, any OS functionality is given to the app through the _Context_.
 
-the _Context_ is mostly a pointer to a bag of
+the _Context_ is mostly a pointer to a bag of kernel functionnalities
 
 ```rust
 pub extern "C" fn
@@ -54,13 +54,13 @@ In Unix, an app has to know the target OS, but also what standard library it use
 
 I am trying to know if it is possible to have an OS-App ecosystem that does not suppose **ANY** **implicit** configuration. I want a world where an app **JUST** has to handle its `start` _context_ argument.
 
-_Context_ gives any OS functions necessary, think alloc, free, access to a framebuffer, or any hardware, any system calls etc.
+_Context_ gives any OS function necessary, think alloc, free, access to a framebuffer, or any hardware, any system calls etc.
 
 That way, apps could be freestanding, and compatible on multiple OS.
 
 ### More about Context
 
-Here is the Context for the last version of this OS
+Here is the _Context_ for the last version of this OS
 
 ```rust
 #[repr(C)]
@@ -110,6 +110,14 @@ Just
 return;
 ```
 
+> How do you sleep, or wait asynchronously ?
+
+Just
+
+```rust
+return;
+```
+
 Apps are **cooperative** in Fomos, They can just return (which would exit permanently an app on a classic OS), and assume that they are gonna be called through their only function `start` again soon, maybe even instantly if the "system call" works that way.
 
 > But an app loses all RAM data everytime it yields that way !
@@ -126,9 +134,52 @@ loop {
 }
 ```
 
-I know, you are going to have a question I can't answer yet, but by now you might be curious, what if all the question had an answer in the pattern ? It looks like it could actually work (with a lot of work).
+There are a lot of questions without answer yet, but by now you might be curious, what if all the question had an answer in the pattern ? It looks like it could actually work (with a lot of work).
 
-### Security
+# Advantages
+
+A lot of stuff comes free once you accept the premises.
+
+#### Sandboxing, instrumentation, debugging
+
+Every functionnality and side effect given to an app goes explicitely through the _Context_. The _Context_ is just a struct, we can wrap or replace anything in it.
+Lets instrument an app we'll call `special_app`. Over simplification :
+```rust
+loop {
+    for normal_app in normal_apps.iter_mut() {
+        app._start(Context::new(alloc,..));
+    }
+    // special_app alloc instrumentation
+    fn alloc_log(..){ alloc(..); log("allocation detected!");}
+    special_app._start(Context::new(alloc_log,..));
+}
+```
+
+#### Restart, sleep, change of hardware 
+
+An app memory lives in its context. The stack is fleeting. It is reset after each yield and doesn't mean much in Fomos.
+Since the _Context_ is explicit, it can be stored. A restart can be made completely transparent to an app.
+
+Pseudo code:
+```rust
+//kernel just started
+...
+let app = App::new(..);
+let ctx = disk.load(app.id).unwrap_or(Context::new(..));
+loop{
+    app._start(ctx);
+    if restart_request{
+        disk.save(app.id, ctx)
+        break;
+    }
+}
+//handle restart
+...
+```
+Quickload and quicksave of an app complete state is trivial.
+Note that some change of hardware could make an app bug. It would be a problem if it was transparent. However, it could be made opaque and obvious, in an opt-in manner, again through the _Context_.  
+
+# Security
 
 Right now it is not implemented, any app can casually check the ram of another app ^^. This is going to be a hard problem to solve. I have plans to have data security without context switch, and without giving every damn app its own virtual memory stack.
 
@@ -137,6 +188,7 @@ Right now it is not implemented, any app can casually check the ram of another a
 - Permanent storage (should be easy since virtio is already implemented)
 - Gpu support (virgl wip)
 - Networking
+- A nice abstraction for apps to share data and functionnalities between themselves
 
 The rest should live in userland.
 
