@@ -4,7 +4,10 @@
 #![feature(option_get_or_insert_default)]
 extern crate alloc;
 mod st;
+
 use st::*;
+
+mod tos;
 
 use alloc::{boxed::Box, vec::Vec};
 
@@ -42,6 +45,9 @@ pub struct Store {
     input_history_last_index: usize,
     console_history: ConsoleHistory,
     active: bool,
+    local: Local,
+    shift: bool,
+    altg: bool,
 }
 
 fn put(pixel: &mut RGBA, v: Vec3<f32>) {
@@ -209,6 +215,9 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 input_history_last_index: ctx.input.history_last_index,
                 console_history: ConsoleHistory::new(),
                 active: false,
+                local: Local::En,
+                shift: false,
+                altg: false,
             }
         })
     });
@@ -228,6 +237,16 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
         'new_inputs: for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
             let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
 
+            match key {
+                Key::KeyLeftShift => {
+                    store.shift = trigger;
+                }
+                Key::KeyRightAlt => {
+                    store.altg = trigger;
+                }
+                _ => {}
+            }
+
             if (trigger) {
                 let last = store.console_history.atoms.last_mut();
                 match last {
@@ -235,7 +254,7 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                         log(&alloc::format!("{:?}", key));
 
                         match key {
-                            Key::KeyEnter => {
+                            Key::KeyEnter if !store.shift => {
                                 match text.as_ref() {
                                     ">pid" => {
                                         store.console_history.atoms.push(Atom {
@@ -249,6 +268,20 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                                             text: alloc::format!("time: {} ms", ctx.start_time),
                                         });
                                     }
+                                    ">lang en" => {
+                                        store.local = Local::En;
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("ok"),
+                                        });
+                                    }
+                                    ">lang fr" => {
+                                        store.local = Local::Fr;
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("ok"),
+                                        });
+                                    }
                                     ">reset" => {
                                         drop(store);
                                         let old = ctx.store.take().unwrap();
@@ -260,19 +293,53 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                                             is_user: false,
                                             text: alloc::format!(
                                                 "commands:
-- pid     Display the app pid
-- time    Display the kernel time
-- reset   Clear the app memory
-- help    You are here
+- pid       Display the app pid
+- time      Display the kernel time
+- reset     Clear the app memory
+- lang ..   Set key locale (en,fr)
+- eval {{..}} Eval tos expression
+- help      You are here
 "
                                             ),
                                         });
                                     }
                                     _ => {
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!("unknown command"),
-                                        });
+                                        if text.starts_with(">eval ") {
+                                            use crate::alloc::borrow::ToOwned;
+                                            use crate::alloc::string::ToString;
+                                            use crate::tos::*;
+                                            use alloc::collections::BTreeMap;
+                                            let code: Vec<char> = text[5..].chars().collect();
+                                            let mut i = 0;
+                                            let mut ast_vec = Vec::new();
+                                            parse_expr(&mut ast_vec, &mut i, &code, 0);
+
+                                            let mut scope = Box::new(Ctx {
+                                                ast_vec,
+                                                variables: BTreeMap::new(),
+                                                path: "r".to_string(),
+                                            });
+                                            scope.variables.insert(
+                                                "time".to_owned(),
+                                                N::Num(ctx.start_time as f64),
+                                            );
+                                            scope
+                                                .variables
+                                                .insert("pid".to_owned(), N::Num(ctx.pid as f64));
+                                            let res = eval(&0, &mut scope);
+                                            log(&alloc::format!("res {:?}", res));
+                                            log(&alloc::format!("{:#?}", scope.variables));
+
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("eval: {:?}", res),
+                                            });
+                                        } else {
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("unknown command"),
+                                            });
+                                        }
                                     }
                                 }
 
@@ -282,6 +349,7 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                                 });
                                 break 'new_inputs;
                             }
+
                             Key::KeyBackspace => {
                                 if text.len() > 1 {
                                     text.pop();
@@ -290,9 +358,15 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                             _ => {}
                         }
 
-                        if let Some(c) = key.char() {
+                        if let Some(c) = key.char(store.local, store.shift, store.altg) {
                             *text = alloc::format!("{}{}", text, c)
                         } else {
+                            match key {
+                                Key::KeyEnter if store.shift => {
+                                    *text = alloc::format!("{}\n", text,)
+                                }
+                                _ => {}
+                            }
                             // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
                         }
                     }
