@@ -22,8 +22,8 @@ OS development is extremely hard, Rust makes it more bearable.
 - All apps run in an async loop
 - Support Virtio mouse and keyboard (drivers are async tasks)
 - Cooperative scheduling (apps yield control as much as possible)
-- No context switch once booted
-- _Nearly support Virgl_
+- No context switches once booted
+- _Nearly support Virgl_ ™
 
 There is 5 examples of apps in this repo named `app_*`, some in Rust, one in C.
 The kernel is in `bootloader`.
@@ -44,7 +44,9 @@ the _Context_ is mostly a pointer to a bag of kernel functionnalities
 pub extern "C" fn
 ```
 
-In Fomos, an app is really just a function. There is nothing else ! This is a **huge** claim. An executable for a Unix or Windows OS is extremely complex compared to a freestanding function.
+In Fomos, an app is really just a **function**. There is nothing else ! This is a **huge** claim. An executable for a Unix or Windows OS is extremely complex compared to a freestanding function.
+
+`<rant>`
 
 It is out a frustration for all my Glibc problems during day job dev on linux that I chose to try this approach.
 
@@ -52,7 +54,9 @@ I want a flat contract between an app and the OS. So what if an app was a functi
 
 In Unix, an app has to know the target OS, but also what standard library it uses, that is 2 levels of indirections. Sometimes the os level has a conflict, sometimes the standard library level has a conflict, and sometimes I just don't have the level to understand why something doesn't work. I merely know it is related.
 
-I am trying to know if it is possible to have an OS-App ecosystem that does not suppose **ANY** **implicit** configuration. I want a world where an app **JUST** has to handle its `start` _context_ argument.
+`</rant>`
+
+I am trying to know if it is possible to have an OS-App ecosystem that does not suppose **ANY** **implicit** configuration. An app would **JUST** have to handle its explicit `start` _context_ argument.
 
 _Context_ gives any OS function necessary, think alloc, free, access to a framebuffer, or any hardware, any system calls etc.
 
@@ -150,7 +154,7 @@ loop {
         app._start(Context::new(alloc,..));
     }
     // special_app alloc instrumentation
-    fn alloc_log(..){ alloc(..); log("allocation detected!");}
+    fn alloc_log(..){log("allocation detected!"); return alloc(..);}
     special_app._start(Context::new(alloc_log,..));
 }
 ```
@@ -158,7 +162,7 @@ loop {
 #### Restart, sleep, change of hardware 
 
 An app memory lives in its context. The stack is fleeting. It is reset after each yield and doesn't mean much in Fomos.
-Since the _Context_ is explicit, it can be stored. A restart can be made completely transparent to an app.
+Since the _Context_ is explicit, it can be stored. A restart _can_ be made completely transparent to an app.
 
 Pseudo code:
 ```rust
@@ -179,9 +183,31 @@ loop{
 Quickload and quicksave of an app complete state is trivial.
 Note that some change of hardware could make an app bug. It would be a problem if it was transparent. However, it could be made opaque and obvious, in an opt-in manner, again through the _Context_.  
 
-# Security
+# Disadvantages
+
+### Security
 
 Right now it is not implemented, any app can casually check the ram of another app ^^. This is going to be a hard problem to solve. I have plans to have data security without context switch, and without giving every damn app its own virtual memory stack.
+
+### Cooperative vs preemptive scheduling
+
+The argument that a cooperative scheduling is doomed to fail is overblown. Apps are already very much cooperative.
+For proof, run a version of that on your nice preemptive system :
+```js
+while(true){
+  new Thread( () => {
+    fs.writeFile("/home/"+randomString(),randomString())
+    malloc(randomInt())
+    curl("http://"+randomString()+".com")
+  }  
+}
+```
+- Blender does a compelling impression of that when you increase the level of details one too many times. Might fill your swap and crash unsaved work on other apps.
+- Badly written Webgl websites crash my gpu driver.
+
+Not only is preemptive scheduling not enough, IMO it is not necessary. Also it is a spectrum. A system can be optimistically cooperative, and turn preemptive pessimistically.
+
+However the ecosystem is made for preemptive OS. There is friction in doing things differently.
 
 # Missing
 
@@ -200,7 +226,7 @@ On a linux, run
 ./build.sh
 ```
 
-_You might need rust nightly, gcc, qemu with virgl flag_
+_You might need rust nightly, gcc, qemu with virgl & sdl flag_
 
 # Credit
 
