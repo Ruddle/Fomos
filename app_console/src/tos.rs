@@ -21,6 +21,10 @@ pub enum Op {
     Minus,
     Mul,
     Div,
+    Assign,
+    Lesser,
+    Greater,
+    Equals,
 }
 
 pub type NI = usize;
@@ -36,6 +40,10 @@ pub enum N {
         condition: NI,
         path_true: NI,
         path_false: NI,
+    },
+    While {
+        condition: NI,
+        body: NI,
     },
     Set {
         name: String,
@@ -108,6 +116,14 @@ pub fn eval<'a>(ni: &NI, ctx: &'a mut Box<Ctx>) -> N {
                 eval(&path_false, ctx)
             }
         }
+
+        N::While { condition, body } => {
+            let mut res = N::Unit;
+            while eval(&condition, ctx).is_truthy() {
+                res = eval(&body, ctx)
+            }
+            res
+        }
         N::Block(arr) => {
             ctx.path.push('_');
             let mut res = N::Unit;
@@ -173,18 +189,52 @@ pub fn eval<'a>(ni: &NI, ctx: &'a mut Box<Ctx>) -> N {
         }
 
         N::Binary { op, l, r } => {
-            let lt = eval(&l, ctx);
-            let rt = eval(&r, ctx);
-            match (op, &lt, &rt) {
-                (Op::Plus, N::Num(li), N::Num(ri)) => N::Num(li + ri),
-                (Op::Minus, N::Num(li), N::Num(ri)) => N::Num(li - ri),
-                (Op::Mul, N::Num(li), N::Num(ri)) => N::Num(li * ri),
-                (Op::Div, N::Num(li), N::Num(ri)) => N::Num(li / ri),
-                (Op::Plus, N::Str(li), ri) => N::Str(format!("{}{}", li, ri.to_str())),
-                (Op::Plus, li, N::Str(ri)) => N::Str(format!("{}{}", li.to_str(), ri)),
-                _ => {
-                    println!("ERROR: bin {:?} {:?}", lt, rt);
-                    N::Unit
+            if let Op::Assign = op {
+                let n = ctx.get_n(l);
+                if let N::Get { name } = n {
+                    let mut path = ctx.path.clone();
+                    let key = loop {
+                        let key = format!("{}{}", path, name);
+                        let res = ctx.variables.get(&key);
+                        match res {
+                            Some(r) => {
+                                break key;
+                            }
+                            None => {
+                                if path.pop().is_none() {
+                                    panic!("NO")
+                                }
+                            }
+                        }
+                    };
+                    let rval = eval(&r, ctx);
+                    ctx.variables.insert(key, rval);
+                }
+                N::Unit
+            } else {
+                let lt = eval(&l, ctx);
+                let rt = eval(&r, ctx);
+                match (op, &lt, &rt) {
+                    (Op::Plus, N::Num(li), N::Num(ri)) => N::Num(li + ri),
+                    (Op::Greater, N::Num(li), N::Num(ri)) => {
+                        N::Num(if li > ri { 1.0 } else { 0.0 })
+                    }
+                    (Op::Lesser, N::Num(li), N::Num(ri)) => N::Num(if li < ri { 1.0 } else { 0.0 }),
+                    (Op::Equals, N::Num(li), N::Num(ri)) => {
+                        N::Num(if li == ri { 1.0 } else { 0.0 })
+                    }
+                    (Op::Equals, N::Str(li), N::Str(ri)) => {
+                        N::Num(if li == ri { 1.0 } else { 0.0 })
+                    }
+                    (Op::Minus, N::Num(li), N::Num(ri)) => N::Num(li - ri),
+                    (Op::Mul, N::Num(li), N::Num(ri)) => N::Num(li * ri),
+                    (Op::Div, N::Num(li), N::Num(ri)) => N::Num(li / ri),
+                    (Op::Plus, N::Str(li), ri) => N::Str(format!("{}{}", li, ri.to_str())),
+                    (Op::Plus, li, N::Str(ri)) => N::Str(format!("{}{}", li.to_str(), ri)),
+                    _ => {
+                        println!("ERROR: bin {:?} {:?}", lt, rt);
+                        N::Unit
+                    }
                 }
             }
         }
@@ -356,6 +406,20 @@ pub fn next_token(i: &mut usize, code: &[char]) -> Token {
                 }
             }
 
+            if c == 'w'
+                && *i + 5 < code.len()
+                && code[*i + 1] == 'h'
+                && code[*i + 2] == 'i'
+                && code[*i + 3] == 'l'
+                && code[*i + 4] == 'e'
+            {
+                let c2 = code[*i + 5];
+                if c2 == ' ' || c2 == '{' {
+                    *i += 5;
+                    break Token::While;
+                }
+            }
+
             if c == 'l'
                 && *i + 3 < code.len()
                 && code[*i + 1] == 'e'
@@ -444,6 +508,22 @@ pub fn next_token(i: &mut usize, code: &[char]) -> Token {
             if c == '/' {
                 *i += 1;
                 break Token::Bin(Op::Div);
+            }
+            if c == '=' {
+                *i += 1;
+                break Token::Bin(Op::Assign);
+            }
+            if c == '>' {
+                *i += 1;
+                break Token::Bin(Op::Greater);
+            }
+            if c == '<' {
+                *i += 1;
+                break Token::Bin(Op::Lesser);
+            }
+            if c == '=' && *i + 1 < code.len() && code[*i + 1] == '=' {
+                *i += 2;
+                break Token::Bin(Op::Equals);
             }
         }
 
@@ -569,6 +649,15 @@ pub fn parse_term(ast_vec: &mut Vec<N>, i: &mut usize, code: &[char], pad: usize
         return Some(node_ni);
     }
 
+    if token == Token::While {
+        let condition = parse_expr(ast_vec, i, code, pad + 1).expect("No condition to while");
+        let body = parse_expr(ast_vec, i, code, pad + 1).expect("No body to while");
+        let n = N::While { condition, body };
+        let node_ni = ast_vec.len();
+        ast_vec.push(n);
+        return Some(node_ni);
+    }
+
     if let Token::If = token {
         print!("{}", pa(pad));
         println!("If");
@@ -678,6 +767,7 @@ pub enum Token {
     Else,
     Comma,
     ParEnd,
+    While,
     Quoted(String),
     Bin(Op),
     N(N),
