@@ -1,3 +1,7 @@
+#### Dear HN readers
+I am actively looking for remote software engineering work. mail@thomassimon.dev
+You can support this night time project by hiring me for a day time job !
+
 # Fomos
 
 Experimental OS, built with Rust
