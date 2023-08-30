@@ -19,6 +19,8 @@ macro_rules! println {
 pub enum Op {
     Plus,
     Minus,
+    Mul,
+    Div,
 }
 
 pub type NI = usize;
@@ -30,24 +32,51 @@ pub enum N {
         args: Vec<NI>,
     },
     Block(Vec<NI>),
+    If {
+        condition: NI,
+        path_true: NI,
+        path_false: NI,
+    },
     Set {
         name: String,
         val: NI,
     },
-    FuncDef {
-        args_name: Vec<String>,
-        scope: Vec<NI>,
-    },
+
     Get {
         name: String,
     },
-    Unit,
-    Num(f64),
     Binary {
         op: Op,
         l: NI,
         r: NI,
     },
+    //Terminal from here to the end
+    FuncDef {
+        args_name: Vec<String>,
+        scope: Vec<NI>,
+    },
+    Array(Vec<NI>),
+    Num(f64),
+    Str(String),
+    Unit,
+}
+
+impl N {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            N::Num(x) if *x != 0.0 => true,
+            N::Str(s) => s.len() > 0,
+            N::Array(vec) => vec.len() > 0,
+            _ => false,
+        }
+    }
+    pub fn to_str(&self) -> String {
+        match self {
+            N::Num(x) => format!("{}", x),
+            N::Str(s) => format!("{}", s),
+            e => format!("{:?}", e),
+        }
+    }
 }
 
 pub struct Ctx {
@@ -66,6 +95,19 @@ pub fn eval<'a>(ni: &NI, ctx: &'a mut Box<Ctx>) -> N {
     let n = ctx.get_n(*ni);
 
     let res = match n {
+        N::If {
+            condition,
+            path_true,
+            path_false,
+        } => {
+            let b = eval(&condition, ctx).is_truthy();
+
+            if b {
+                eval(&path_true, ctx)
+            } else {
+                eval(&path_false, ctx)
+            }
+        }
         N::Block(arr) => {
             ctx.path.push('_');
             let mut res = N::Unit;
@@ -136,6 +178,10 @@ pub fn eval<'a>(ni: &NI, ctx: &'a mut Box<Ctx>) -> N {
             match (op, &lt, &rt) {
                 (Op::Plus, N::Num(li), N::Num(ri)) => N::Num(li + ri),
                 (Op::Minus, N::Num(li), N::Num(ri)) => N::Num(li - ri),
+                (Op::Mul, N::Num(li), N::Num(ri)) => N::Num(li * ri),
+                (Op::Div, N::Num(li), N::Num(ri)) => N::Num(li / ri),
+                (Op::Plus, N::Str(li), ri) => N::Str(format!("{}{}", li, ri.to_str())),
+                (Op::Plus, li, N::Str(ri)) => N::Str(format!("{}{}", li.to_str(), ri)),
                 _ => {
                     println!("ERROR: bin {:?} {:?}", lt, rt);
                     N::Unit
@@ -275,6 +321,41 @@ pub fn next_token(i: &mut usize, code: &[char]) -> Token {
                 *i += 1;
                 break Token::BlockEnd;
             }
+
+            if c == '"' {
+                let mut builder = "".to_owned();
+                loop {
+                    *i += 1;
+                    let c = code[*i];
+                    if c != '"' {
+                        builder.push(c);
+                    } else {
+                        *i += 1;
+                        return Token::Quoted(builder);
+                    }
+                }
+            }
+
+            if c == 'i' && *i + 2 < code.len() && code[*i + 1] == 'f' {
+                let c2 = code[*i + 2];
+                if c2 == ' ' || c2 == '{' {
+                    *i += 2;
+                    break Token::If;
+                }
+            }
+            if c == 'e'
+                && *i + 4 < code.len()
+                && code[*i + 1] == 'l'
+                && code[*i + 2] == 's'
+                && code[*i + 3] == 'e'
+            {
+                let c2 = code[*i + 4];
+                if c2 == ' ' || c2 == '{' {
+                    *i += 4;
+                    break Token::Else;
+                }
+            }
+
             if c == 'l'
                 && *i + 3 < code.len()
                 && code[*i + 1] == 'e'
@@ -355,6 +436,14 @@ pub fn next_token(i: &mut usize, code: &[char]) -> Token {
             if c == '-' {
                 *i += 1;
                 break Token::Bin(Op::Minus);
+            }
+            if c == '*' {
+                *i += 1;
+                break Token::Bin(Op::Mul);
+            }
+            if c == '/' {
+                *i += 1;
+                break Token::Bin(Op::Div);
             }
         }
 
@@ -471,6 +560,41 @@ pub fn parse_term(ast_vec: &mut Vec<N>, i: &mut usize, code: &[char], pad: usize
         return Some(block_ni);
     }
 
+    if let Token::Quoted(s) = token {
+        print!("{}", pa(pad));
+        println!("Quoted");
+        let n = N::Str(s);
+        let node_ni = ast_vec.len();
+        ast_vec.push(n);
+        return Some(node_ni);
+    }
+
+    if let Token::If = token {
+        print!("{}", pa(pad));
+        println!("If");
+        let cond_expr = parse_expr(ast_vec, i, code, pad + 1).expect("No expr after if");
+        let true_expr = parse_expr(ast_vec, i, code, pad + 1).expect("No expr after if");
+        let mut j = *i;
+        let token = next_token(&mut j, code);
+        let else_expr;
+        if token == Token::Else {
+            *i = j;
+            else_expr = parse_expr(ast_vec, i, code, pad + 1).expect("No expr after else");
+        } else {
+            let n = N::Unit;
+            else_expr = ast_vec.len();
+            ast_vec.push(n);
+        }
+        let n = N::If {
+            condition: cond_expr,
+            path_true: true_expr,
+            path_false: else_expr,
+        };
+        let ifn = ast_vec.len();
+        ast_vec.push(n);
+        return Some(ifn);
+    }
+
     if let Token::Let(name) = token {
         print!("{}", pa(pad));
         println!("Let");
@@ -550,8 +674,11 @@ pub fn parse_term(ast_vec: &mut Vec<N>, i: &mut usize, code: &[char], pad: usize
 pub enum Token {
     BlockStart,
     BlockEnd,
+    If,
+    Else,
     Comma,
     ParEnd,
+    Quoted(String),
     Bin(Op),
     N(N),
     Let(String),
