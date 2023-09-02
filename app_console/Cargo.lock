@@ -24,9 +24,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "fomoscript"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ea747010079579506b23ad9ec9d6a33fdf18c5d84dfb65a5a47eab37cb77450"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "func"
 version = "0.1.0"
 dependencies = [
+ "fomoscript",
  "noto-sans-mono-bitmap",
  "taffy",
  "vek",
@@ -37,6 +47,12 @@ name = "libm"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
+
+[[package]]
+name = "log"
+version = "0.4.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
 name = "noto-sans-mono-bitmap"

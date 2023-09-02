@@ -13,6 +13,7 @@ bench = false
 # x86_64 = { version = "0.14.8" }
 vek = { version = "0.15.10", default-features = false, features = ["libm"] }
 taffy = { git = "https://github.com/Ruddle/taffy", default-features = false, features = ["alloc","flexbox"] } 
+fomoscript= "0.2.1"
 # [dependencies.zune-jpeg]
 # version ="0.3.14"
 # default-features = false

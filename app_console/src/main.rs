@@ -7,8 +7,6 @@ mod st;
 
 use st::*;
 
-mod tos;
-
 use alloc::{boxed::Box, vec::Vec};
 
 use vek::{num_traits::Zero, Vec3};
@@ -31,6 +29,11 @@ pub struct Atom {
     text: alloc::string::String,
 }
 
+enum Mode {
+    Shell,
+    FomoscriptREPL,
+}
+
 pub struct Store {
     x: usize,
     y: usize,
@@ -48,6 +51,8 @@ pub struct Store {
     local: Local,
     shift: bool,
     altg: bool,
+    script_ctx: fomoscript::Ctx,
+    mode: Mode,
 }
 
 fn put(pixel: &mut RGBA, v: Vec3<f32>) {
@@ -218,6 +223,8 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
                 local: Local::En,
                 shift: false,
                 altg: false,
+                script_ctx: fomoscript::Ctx::new(),
+                mode: Mode::Shell,
             }
         })
     });
@@ -232,150 +239,6 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
             text: alloc::format!(">"),
         });
     }
-
-    if store.active {
-        'new_inputs: for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
-            let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
-
-            match key {
-                Key::KeyLeftShift => {
-                    store.shift = trigger;
-                }
-                Key::KeyRightAlt => {
-                    store.altg = trigger;
-                }
-                _ => {}
-            }
-
-            if (trigger) {
-                let last = store.console_history.atoms.last_mut();
-                match last {
-                    Some(Atom { is_user, text }) if *is_user => {
-                        log(&alloc::format!("{:?}", key));
-
-                        match key {
-                            Key::KeyEnter if !store.shift => {
-                                match text.as_ref() {
-                                    ">pid" => {
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!("pid: {}", ctx.pid),
-                                        });
-                                    }
-                                    ">time" => {
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!("time: {} ms", ctx.start_time),
-                                        });
-                                    }
-                                    ">lang en" => {
-                                        store.local = Local::En;
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!("ok"),
-                                        });
-                                    }
-                                    ">lang fr" => {
-                                        store.local = Local::Fr;
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!("ok"),
-                                        });
-                                    }
-                                    ">reset" => {
-                                        drop(store);
-                                        let old = ctx.store.take().unwrap();
-                                        drop(old);
-                                        return 0;
-                                    }
-                                    ">help" => {
-                                        store.console_history.atoms.push(Atom {
-                                            is_user: false,
-                                            text: alloc::format!(
-                                                "commands:
-- pid       Display the app pid
-- time      Display the kernel time
-- reset     Clear the app memory
-- lang ..   Set key locale (en,fr)
-- eval {{..}} Eval tos expression
-- help      You are here
-"
-                                            ),
-                                        });
-                                    }
-                                    _ => {
-                                        if text.starts_with(">eval ") {
-                                            use crate::alloc::borrow::ToOwned;
-                                            use crate::alloc::string::ToString;
-                                            use crate::tos::*;
-                                            use alloc::collections::BTreeMap;
-                                            let code: Vec<char> = text[5..].chars().collect();
-                                            let mut i = 0;
-                                            let mut ast_vec = Vec::new();
-                                            parse_expr(&mut ast_vec, &mut i, &code, 0);
-
-                                            let mut scope = Box::new(Ctx {
-                                                ast_vec,
-                                                variables: BTreeMap::new(),
-                                                path: "r".to_string(),
-                                            });
-                                            scope.variables.insert(
-                                                "time".to_owned(),
-                                                N::Num(ctx.start_time as f64),
-                                            );
-                                            scope
-                                                .variables
-                                                .insert("pid".to_owned(), N::Num(ctx.pid as f64));
-                                            let res = eval(&0, &mut scope);
-                                            log(&alloc::format!("res {:?}", res));
-                                            log(&alloc::format!("{:#?}", scope.variables));
-
-                                            store.console_history.atoms.push(Atom {
-                                                is_user: false,
-                                                text: alloc::format!("eval: {:?}", res),
-                                            });
-                                        } else {
-                                            store.console_history.atoms.push(Atom {
-                                                is_user: false,
-                                                text: alloc::format!("unknown command"),
-                                            });
-                                        }
-                                    }
-                                }
-
-                                store.console_history.atoms.push(Atom {
-                                    is_user: true,
-                                    text: alloc::format!(">"),
-                                });
-                                break 'new_inputs;
-                            }
-
-                            Key::KeyBackspace => {
-                                if text.len() > 1 {
-                                    text.pop();
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        if let Some(c) = key.char(store.local, store.shift, store.altg) {
-                            *text = alloc::format!("{}{}", text, c)
-                        } else {
-                            match key {
-                                Key::KeyEnter if store.shift => {
-                                    *text = alloc::format!("{}\n", text,)
-                                }
-                                _ => {}
-                            }
-                            // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    store.input_history_last_index = ctx.input.history_last_index;
 
     store.step += 1;
     let blured1 = &mut store.b1;
@@ -736,5 +599,217 @@ pub extern "C" fn _start(ctx: &mut Context<Store>) -> i32 {
             cursor_x = 0;
         }
     }
+
+    if store.active {
+        'new_inputs: for i in (store.input_history_last_index + 1)..=ctx.input.history_last_index {
+            let InputEvent { trigger, key } = ctx.input.history_ring[i % HISTORY_SIZE];
+
+            match key {
+                Key::KeyLeftShift => {
+                    store.shift = trigger;
+                }
+                Key::KeyRightAlt => {
+                    store.altg = trigger;
+                }
+                _ => {}
+            }
+
+            if (trigger) {
+                let last = store.console_history.atoms.last_mut();
+                match last {
+                    Some(Atom { is_user, text }) if *is_user => {
+                        log(&alloc::format!("{:?}", key));
+
+                        match key {
+                            Key::KeyEnter if !store.shift => {
+                                if let Mode::FomoscriptREPL = store.mode {
+                                    use fomoscript::*;
+                                    store.script_ctx.insert_code(&text[4..]);
+                                    if let Ok(parent) = store.script_ctx.parse_next_expr() {
+                                        let res = eval(&parent, &mut store.script_ctx);
+                                        store.console_history.atoms.push(Atom {
+                                            is_user: false,
+                                            text: alloc::format!("eval: {:?}", res),
+                                        });
+                                    }
+                                } else {
+                                    match text.as_ref() {
+                                        ">repl" => {
+                                            use fomoscript::*;
+                                            store.mode = Mode::FomoscriptREPL;
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!(
+                                                    "Call quit() to exit the REPL"
+                                                ),
+                                            });
+
+                                            let store_mode_ptr: *mut Mode = &mut store.mode;
+                                            let quit = alloc::rc::Rc::new(
+                                                move |a: N, b: N, c: N, d: N| -> N {
+                                                    let store_mode =
+                                                        unsafe { &mut *store_mode_ptr };
+                                                    *store_mode = Mode::Shell;
+                                                    N::Unit
+                                                },
+                                            );
+                                            store.script_ctx.set_var_absolute(
+                                                "quit",
+                                                N::FuncNativeDef(Native(quit)),
+                                            );
+                                        }
+                                        ">pid" => {
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("pid: {}", ctx.pid),
+                                            });
+                                        }
+                                        ">time" => {
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("time: {} ms", ctx.start_time),
+                                            });
+                                        }
+                                        ">lang en" => {
+                                            store.local = Local::En;
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("ok"),
+                                            });
+                                        }
+                                        ">lang fr" => {
+                                            store.local = Local::Fr;
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!("ok"),
+                                            });
+                                        }
+                                        ">reset" => {
+                                            drop(store);
+                                            let old = ctx.store.take().unwrap();
+                                            drop(old);
+                                            return 0;
+                                        }
+                                        ">help" => {
+                                            store.console_history.atoms.push(Atom {
+                                                is_user: false,
+                                                text: alloc::format!(
+                                                    "commands:
+    - pid       Display the app pid
+    - time      Display the kernel time
+    - reset     Clear the app memory
+    - lang ..   Set key locale (en,fr)
+    - eval ..   Eval fomoscript
+    - repl      launch fomoscript REPL
+    - help      You are here
+    "
+                                                ),
+                                            });
+                                        }
+                                        _ => {
+                                            if text.starts_with(">eval ") {
+                                                use crate::alloc::borrow::ToOwned;
+                                                use fomoscript::*;
+
+                                                let res = {
+                                                    store.script_ctx.insert_code(&text[5..]);
+                                                    store.script_ctx.set_var_absolute(
+                                                        "time",
+                                                        N::Num(ctx.start_time as f64),
+                                                    );
+                                                    store.script_ctx.set_var_absolute(
+                                                        "pid",
+                                                        N::Num(ctx.pid as f64),
+                                                    );
+
+                                                    {
+                                                        //TODO find a safe way to share native function to interpreter
+                                                        let ptr: *mut [RGBA] = ctx.fb.pixels;
+                                                        let w = ctx.fb.w;
+                                                        let draw_pixel = alloc::rc::Rc::new(
+                                                            move |a: N, b: N, c: N, d: N| -> N {
+                                                                let arr: &mut [RGBA] =
+                                                                    unsafe { &mut *ptr };
+                                                                let p = &mut arr[a.as_f64()
+                                                                    as usize
+                                                                    + (b.as_f64() as usize) * w];
+
+                                                                p.r = (c.as_f64() * 255.0) as u8;
+                                                                p.g = p.r;
+                                                                p.b = p.b;
+                                                                N::Unit
+                                                            },
+                                                        );
+                                                        store.script_ctx.set_var_absolute(
+                                                            "draw",
+                                                            N::FuncNativeDef(Native(draw_pixel)),
+                                                        );
+                                                    }
+                                                    let mut res = N::Unit;
+                                                    while let Ok(parent) =
+                                                        store.script_ctx.parse_next_expr()
+                                                    {
+                                                        res = eval(&parent, &mut store.script_ctx);
+                                                    }
+
+                                                    log(&alloc::format!("res {:?}", res));
+
+                                                    res
+                                                };
+
+                                                store.console_history.atoms.push(Atom {
+                                                    is_user: false,
+                                                    text: alloc::format!("eval: {:?}", res),
+                                                });
+                                            } else {
+                                                store.console_history.atoms.push(Atom {
+                                                    is_user: false,
+                                                    text: alloc::format!("unknown command"),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+
+                                store.console_history.atoms.push(Atom {
+                                    is_user: true,
+                                    text: alloc::string::String::from(
+                                        if let Mode::Shell = store.mode {
+                                            ">"
+                                        } else {
+                                            "fos>"
+                                        },
+                                    ),
+                                });
+                                break 'new_inputs;
+                            }
+
+                            Key::KeyBackspace => {
+                                if text.len() > 1 {
+                                    text.pop();
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        if let Some(c) = key.char(store.local, store.shift, store.altg) {
+                            *text = alloc::format!("{}{}", text, c)
+                        } else {
+                            match key {
+                                Key::KeyEnter if store.shift => {
+                                    *text = alloc::format!("{}\n", text,)
+                                }
+                                _ => {}
+                            }
+                            // store.text_buffer = alloc::format!("{}{:?}", store.text_buffer, key)
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    store.input_history_last_index = ctx.input.history_last_index;
+
     return 0;
 }
