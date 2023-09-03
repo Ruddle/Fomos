@@ -1,6 +1,4 @@
-#### Dear HN readers
-I am actively looking for remote software engineering work. mail@thomassimon.dev
-You can support this night time project by hiring me for a day time job !
+> You can support this night time project by hiring me for a day time job !
 
 # Fomos
 
@@ -152,6 +150,7 @@ A lot of stuff comes free once you accept the premises.
 
 Every functionnality and side effect given to an app goes explicitely through the _Context_. The _Context_ is just a struct, we can wrap or replace anything in it.
 Lets instrument an app we'll call `special_app`. Over simplification :
+
 ```rust
 loop {
     for normal_app in normal_apps.iter_mut() {
@@ -163,12 +162,13 @@ loop {
 }
 ```
 
-#### Restart, sleep, change of hardware 
+#### Restart, sleep, change of hardware
 
 An app memory lives in its context. The stack is fleeting. It is reset after each yield and doesn't mean much in Fomos.
 Since the _Context_ is explicit, it can be stored. A restart _can_ be made completely transparent to an app.
 
 Pseudo code:
+
 ```rust
 //kernel just started
 ...
@@ -184,8 +184,9 @@ loop{
 //handle restart
 ...
 ```
+
 Quickload and quicksave of an app complete state is trivial.
-Note that some change of hardware could make an app bug. It would be a problem if it was transparent. However, it could be made opaque and obvious, in an opt-in manner, again through the _Context_.  
+Note that some change of hardware could make an app bug. It would be a problem if it was transparent. However, it could be made opaque and obvious, in an opt-in manner, again through the _Context_.
 
 # Disadvantages
 
@@ -197,15 +198,17 @@ Right now it is not implemented, any app can casually check the ram of another a
 
 The argument that a cooperative scheduling is doomed to fail is overblown. Apps are already very much cooperative.
 For proof, run a version of that on your nice preemptive system :
+
 ```js
 while(true){
   new Thread( () => {
     fs.writeFile("/home/"+randomString(),randomString())
     malloc(randomInt())
     curl("http://"+randomString()+".com")
-  }  
+  }
 }
 ```
+
 - Blender does a compelling impression of that when you increase the level of details one too many times. Might fill your swap and crash unsaved work on other apps.
 - Badly written Webgl websites crash my gpu driver.
 
@@ -224,13 +227,15 @@ The rest should live in userland.
 
 # Building
 
-On a linux, run
+run
 
 ```sh
 ./build.sh
 ```
 
 _You might need rust nightly, gcc, qemu with virgl & sdl flag_
+
+[More info here](/docs/BUILD.md)
 
 # Credit
 
